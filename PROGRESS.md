@@ -63,6 +63,13 @@
 - 사용자 요청으로 전체 UI를 카카오톡 파스텔/픽셀 테마로 재테마링 (`frontend/src/index.css` 전면 개편,
   Google Fonts `Jua`/`Gaegu`/`Press Start 2P`, 픽셀 별·구름 배경, 도트 테두리, 말풍선 스타일 타임라인,
   칩/뱃지에 이모지 아이콘 추가). `docs/screenshots/`의 README 스크린샷 3장도 새 테마로 재캡처.
+- GitHub(`git@github.com:minhahamin/LearnPath.git`)의 `main`에 push 완료 (git init부터 진행, 비밀키
+  미포함 확인 후 커밋).
+- **Railway에 실제 배포 완료** — `backend`/`frontend`/`Postgres` 3개 서비스, CLI로 프로젝트 생성부터
+  도메인 발급·CORS 연결까지 전부 진행. 라이브 URL은 `docs/DEPLOY.md` 상단 및 README 참고.
+  배포 중 겪은 문제(Railway 기본 빌더가 Railpack이라 `railway.json`이 아니라 `railpack.json`을
+  읽어야 함, `requirements.txt`의 `pydantic` 핀이 `google-genai`와 충돌해 클린 설치 실패)와 해결
+  과정은 `docs/DEPLOY.md` 하단 "겪었던 문제" 참고.
 
 ### 트러블슈팅 메모
 - 로컬 Postgres(native, 포트 5432)가 이미 떠 있어서 Docker의 `0.0.0.0:5432` 포워딩과 충돌 — `127.0.0.1` 연결이 조용히 로컬 인스턴스로 가서 인증 오류처럼 보였음. `docker-compose.yml`에서 포트를 **5434**로 변경해 해결. (`DATABASE_URL`도 5434로 맞춰둠)
