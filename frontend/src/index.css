@@ -48,15 +48,20 @@
   box-sizing: border-box;
 }
 
-html,
+html {
+  height: 100%;
+}
+
+/* min-height (not height) so the box grows with content instead of clipping
+   it - otherwise anything taller than one viewport shows blank white below
+   the body's background once you scroll. */
 body,
 #root {
-  height: 100%;
+  min-height: 100%;
 }
 
 body {
   margin: 0;
-  min-height: 100%;
   color: var(--text);
   font-family: var(--font-body);
   font-size: 16px;
@@ -98,17 +103,23 @@ body {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: -30px;
-  height: 200px;
-  background:
-    radial-gradient(circle at 8% 100%, var(--cloud-a) 0 60px, transparent 61px),
-    radial-gradient(circle at 24% 100%, var(--cloud-b) 0 95px, transparent 96px),
-    radial-gradient(circle at 42% 100%, var(--cloud-a) 0 70px, transparent 71px),
-    radial-gradient(circle at 60% 100%, var(--cloud-b) 0 105px, transparent 106px),
-    radial-gradient(circle at 78% 100%, var(--cloud-a) 0 75px, transparent 76px),
-    radial-gradient(circle at 96% 100%, var(--cloud-b) 0 65px, transparent 66px);
-  background-repeat: no-repeat;
-  opacity: 0.85;
+  bottom: -16px;
+  height: 220px;
+  /* two tiled, overlapping cloud-bump SVGs (back = lighter/taller, front =
+     deeper pink/shorter) - tiling instead of a handful of fixed-percentage
+     radial-gradients means it stays a continuous cloud bank at any width
+     instead of a row of isolated circles with gaps between them. */
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='150'%3E%3Cg fill='%23ffe9f2'%3E%3Crect x='0' y='95' width='400' height='55'/%3E%3Ccircle cx='20' cy='95' r='42'/%3E%3Ccircle cx='85' cy='70' r='55'/%3E%3Ccircle cx='160' cy='80' r='58'/%3E%3Ccircle cx='240' cy='62' r='52'/%3E%3Ccircle cx='320' cy='85' r='50'/%3E%3Ccircle cx='400' cy='72' r='45'/%3E%3C/g%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='120'%3E%3Cg fill='%23ffd3e6'%3E%3Crect x='0' y='75' width='300' height='45'/%3E%3Ccircle cx='15' cy='75' r='35'/%3E%3Ccircle cx='70' cy='55' r='45'/%3E%3Ccircle cx='135' cy='62' r='48'/%3E%3Ccircle cx='200' cy='50' r='42'/%3E%3Ccircle cx='260' cy='68' r='40'/%3E%3Ccircle cx='300' cy='58' r='38'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: repeat-x, repeat-x;
+  background-position:
+    bottom -10px left 0,
+    bottom left 0;
+  background-size:
+    400px 150px,
+    300px 120px;
+  filter: blur(1px);
 }
 
 .app-shell {
