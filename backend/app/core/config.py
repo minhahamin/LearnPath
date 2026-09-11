@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,6 +11,17 @@ class Settings(BaseSettings):
     tavily_api_key: str = ""
 
     database_url: str = "postgresql+asyncpg://curator:curator@localhost:5432/curator_db"
+
+    @field_validator("database_url")
+    @classmethod
+    def use_asyncpg_driver(cls, v: str) -> str:
+        # Railway/Heroku-style DATABASE_URL comes as postgres:// or postgresql://
+        # (no driver) - SQLAlchemy's async engine needs the asyncpg driver spelled out.
+        if v.startswith("postgres://"):
+            return "postgresql+asyncpg://" + v[len("postgres://") :]
+        if v.startswith("postgresql://"):
+            return "postgresql+asyncpg://" + v[len("postgresql://") :]
+        return v
 
     max_react_iterations: int = 5
     max_retry_count: int = 2

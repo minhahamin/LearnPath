@@ -213,3 +213,4 @@ frontend/
 
 - [`PROJECT_SPEC.md`](./PROJECT_SPEC.md) — 원 기획 스펙 문서
 - [`PROGRESS.md`](./PROGRESS.md) — 빌드 로그 (Day별/기능별 진행 상황, 트러블슈팅 전체 기록)
+- [`docs/DEPLOY.md`](./docs/DEPLOY.md) — Railway 배포 가이드
