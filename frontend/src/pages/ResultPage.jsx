@@ -1,8 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { getRoadmap } from "../api/client.js";
+import { getRoadmap, updateProgress } from "../api/client.js";
 import ResourceCard from "../components/ResourceCard.jsx";
 
 const LEVEL_LABELS = { beginner: "🐣 입문", intermediate: "🌟 중급", advanced: "🚀 고급" };
@@ -11,10 +11,26 @@ const STATUS_LABELS = { success: "🎀 완료", partial: "🌤️ 부분 완료"
 export default function ResultPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const { data: roadmap, isLoading } = useQuery({
     queryKey: ["roadmap", id],
     queryFn: () => getRoadmap(id),
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: ({ url, completed }) => updateProgress(id, url, completed),
+    onMutate: async ({ url, completed }) => {
+      await queryClient.cancelQueries({ queryKey: ["roadmap", id] });
+      const previous = queryClient.getQueryData(["roadmap", id]);
+      queryClient.setQueryData(["roadmap", id], (old) =>
+        old ? { ...old, progress: { ...old.progress, [url]: completed } } : old
+      );
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(["roadmap", id], context.previous);
+    },
   });
 
   useEffect(() => {
@@ -35,6 +51,11 @@ export default function ResultPage() {
   }
 
   const result = roadmap.result;
+  const progress = roadmap.progress || {};
+  const allResources = (result?.levels || []).flatMap((block) => block.resources);
+  const completedCount = allResources.filter((r) => progress[r.url]).length;
+  const totalCount = allResources.length;
+  const percent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
   return (
     <div>
@@ -47,19 +68,43 @@ export default function ResultPage() {
         </div>
       </div>
 
-      {(result?.levels || []).map((block) => (
-        <section key={block.level} className="level-section">
-          <h2>
-            {LEVEL_LABELS[block.level] || block.level}
-            <span className="level-badge">{block.resources.length}개 자료</span>
-          </h2>
-          <div className="resource-grid">
-            {block.resources.map((resource, i) => (
-              <ResourceCard key={i} resource={resource} />
-            ))}
+      {totalCount > 0 && (
+        <div className="progress-tracker">
+          <div className="progress-tracker-label">
+            <span>📌 진행률</span>
+            <span>
+              {completedCount} / {totalCount} 완료
+            </span>
           </div>
-        </section>
-      ))}
+          <div className="progress-bar-track">
+            <div className="progress-bar-fill" style={{ width: `${percent}%` }} />
+          </div>
+        </div>
+      )}
+
+      {(result?.levels || []).map((block) => {
+        const levelCompleted = block.resources.filter((r) => progress[r.url]).length;
+        return (
+          <section key={block.level} className="level-section">
+            <h2>
+              {LEVEL_LABELS[block.level] || block.level}
+              <span className="level-badge">
+                {levelCompleted}/{block.resources.length} 완료
+              </span>
+            </h2>
+            <div className="resource-grid">
+              {block.resources.map((resource, i) => (
+                <ResourceCard
+                  key={i}
+                  resource={resource}
+                  completed={!!progress[resource.url]}
+                  onToggle={(completed) => toggleMutation.mutate({ url: resource.url, completed })}
+                />
+              ))}
+            </div>
+          </section>
+        );
+      })}
 
       {(!result?.levels || result.levels.length === 0) && (
         <div className="empty-state">확인된 자료가 없습니다.</div>

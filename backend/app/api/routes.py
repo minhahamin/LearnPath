@@ -8,6 +8,8 @@ from app.db.session import get_db
 from app.schemas.roadmap import (
     CurateRequest,
     CurateResponse,
+    ProgressResponse,
+    ProgressUpdateRequest,
     ReactStepOut,
     RoadmapListItem,
     RoadmapResponse,
@@ -18,7 +20,7 @@ router = APIRouter(prefix="/api")
 
 @router.post("/curate", response_model=CurateResponse)
 async def curate(body: CurateRequest, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
-    roadmap = Roadmap(topic=body.topic, status="running", result_json=None)
+    roadmap = Roadmap(topic=body.topic, status="running", result_json=None, progress_json={})
     db.add(roadmap)
     await db.commit()
     await db.refresh(roadmap)
@@ -38,8 +40,37 @@ async def get_roadmap(roadmap_id: int, db: AsyncSession = Depends(get_db)):
         topic=roadmap.topic,
         status=roadmap.status,
         result=roadmap.result_json,
+        progress=roadmap.progress_json or {},
         created_at=roadmap.created_at,
     )
+
+
+def _resource_urls(result_json: dict | None) -> set[str]:
+    if not result_json:
+        return set()
+    return {
+        resource["url"]
+        for level in result_json.get("levels", [])
+        for resource in level.get("resources", [])
+    }
+
+
+@router.patch("/roadmaps/{roadmap_id}/progress", response_model=ProgressResponse)
+async def update_progress(
+    roadmap_id: int, body: ProgressUpdateRequest, db: AsyncSession = Depends(get_db)
+):
+    roadmap = await db.get(Roadmap, roadmap_id)
+    if roadmap is None:
+        raise HTTPException(status_code=404, detail="roadmap not found")
+    if body.url not in _resource_urls(roadmap.result_json):
+        raise HTTPException(status_code=400, detail="url is not a resource of this roadmap")
+
+    progress = dict(roadmap.progress_json or {})
+    progress[body.url] = body.completed
+    roadmap.progress_json = progress
+    await db.commit()
+
+    return ProgressResponse(progress=progress)
 
 
 @router.get("/roadmaps/{roadmap_id}/steps", response_model=list[ReactStepOut])
@@ -50,7 +81,11 @@ async def get_roadmap_steps(roadmap_id: int, db: AsyncSession = Depends(get_db))
     steps = result.scalars().all()
     return [
         ReactStepOut(
-            step_order=s.step_order, step_type=s.step_type, content=s.content, created_at=s.created_at
+            step_order=s.step_order,
+            step_type=s.step_type,
+            content=s.content,
+            data=s.data,
+            created_at=s.created_at,
         )
         for s in steps
     ]

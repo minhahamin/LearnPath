@@ -88,6 +88,7 @@ class RoadmapResponse(BaseModel):
     # directly from collected evaluations and may omit fields like hours, so this
     # stays a loose dict rather than the strict contract.
     result: dict | None
+    progress: dict[str, bool]
     created_at: datetime
 
 
@@ -95,6 +96,7 @@ class ReactStepOut(BaseModel):
     step_order: int
     step_type: str
     content: str
+    data: dict | list | None
     created_at: datetime
 
 
@@ -103,3 +105,12 @@ class RoadmapListItem(BaseModel):
     topic: str
     status: str
     created_at: datetime
+
+
+class ProgressUpdateRequest(BaseModel):
+    url: str
+    completed: bool
+
+
+class ProgressResponse(BaseModel):
+    progress: dict[str, bool]

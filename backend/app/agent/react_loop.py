@@ -117,7 +117,7 @@ class ReactRunner:
     def total_tokens(self) -> int:
         return self.input_tokens + self.output_tokens
 
-    async def _persist_step(self, step_type: str, content: str) -> None:
+    async def _persist_step(self, step_type: str, content: str, data: dict | list | None = None) -> None:
         self._step_order += 1
         async with AsyncSessionLocal() as session:
             session.add(
@@ -126,6 +126,7 @@ class ReactRunner:
                     step_order=self._step_order,
                     step_type=step_type,
                     content=content,
+                    data=data,
                 )
             )
             await session.commit()
@@ -224,6 +225,10 @@ class ReactRunner:
                 EVALUATE_TOOL,
             )
             evaluations = evaluation.get("evaluations", [])
+            snippet_by_url = {r.url: r.snippet for r in results}
+            for item in evaluations:
+                item["snippet"] = snippet_by_url.get(item.get("url"), "")
+
             kept = 0
             for item in evaluations:
                 if not item.get("relevant"):
@@ -236,6 +241,7 @@ class ReactRunner:
             await self._persist_step(
                 "observation",
                 f"{len(evaluations)}건 평가, {kept}건 관련성 있음으로 채택. 현재 수집 현황:\n{self._collected_summary()}",
+                data={"query": query, "target_level": target_level, "evaluations": evaluations},
             )
 
         await self._persist_step(

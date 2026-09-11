@@ -23,3 +23,8 @@ export async function listRoadmaps() {
   const { data } = await client.get("/api/roadmaps");
   return data;
 }
+
+export async function updateProgress(roadmapId, url, completed) {
+  const { data } = await client.patch(`/api/roadmaps/${roadmapId}/progress`, { url, completed });
+  return data; // { progress }
+}

@@ -8,7 +8,7 @@
 ## 1. 백엔드 기반
 - [x] `core/config.py` — .env 설정 로더
 - [x] `db/models.py`, `db/session.py` — SQLAlchemy 모델/세션
-- [ ] `alembic` 마이그레이션 (roadmaps / react_steps / run_logs)
+- [x] `alembic` 마이그레이션 (roadmaps / react_steps / run_logs)
 - [x] `requirements.txt`, `.env.example`
 
 ## 2. 웹검색 도구
@@ -70,6 +70,17 @@
   배포 중 겪은 문제(Railway 기본 빌더가 Railpack이라 `railway.json`이 아니라 `railpack.json`을
   읽어야 함, `requirements.txt`의 `pydantic` 핀이 `google-genai`와 충돌해 클린 설치 실패)와 해결
   과정은 `docs/DEPLOY.md` 하단 "겪었던 문제" 참고.
+
+## 12. 스트레치 기능 (로그인 제외)
+- [x] **로드맵 진행률 체크리스트** — `roadmaps.progress_json`(`{url: bool}`) 컬럼 추가(0002 마이그레이션),
+  `PATCH /api/roadmaps/{id}/progress` 엔드포인트, `ResultPage`에 체크박스 + 전체/난이도별 진행률 바.
+  react-query 낙관적 업데이트 적용. 브라우저로 체크→새로고침까지 실제 DB 영속 확인함.
+- [x] **Observation 상세보기** — `react_steps.data`(JSONB) 컬럼 추가, observation 단계에서 평가된
+  항목(제목/URL/스니펫/난이도/신뢰도/채택 여부/판단 근거)을 구조화해 저장. `Timeline`에 "검색 결과
+  N건 자세히 보기" 토글 추가. Gemini 무료 티어 쿼터가 소진돼 있어 실제 라이브 호출로는 검증하지
+  못했고, 임시 테스트용 roadmap(id=6, 이후 삭제)에 합성 데이터를 넣어 UI/토글 동작만 검증함 —
+  실제 관찰 데이터 저장 로직 자체(`react_loop.py`)는 코드 리뷰로 확인.
+- [ ] 다국어 지원, LangFuse 연동, 다중 검색 소스 — 범위가 크거나 외부 계정이 필요해 보류
 
 ### 트러블슈팅 메모
 - 로컬 Postgres(native, 포트 5432)가 이미 떠 있어서 Docker의 `0.0.0.0:5432` 포워딩과 충돌 — `127.0.0.1` 연결이 조용히 로컬 인스턴스로 가서 인증 오류처럼 보였음. `docker-compose.yml`에서 포트를 **5434**로 변경해 해결. (`DATABASE_URL`도 5434로 맞춰둠)
