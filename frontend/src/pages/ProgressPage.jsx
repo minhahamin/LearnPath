@@ -65,6 +65,11 @@ export default function ProgressPage() {
           <div className="status-banner" style={{ color: "var(--danger)" }}>
             큐레이션에 실패했습니다.
           </div>
+          {roadmapQuery.data?.error_message && (
+            <div className="status-banner" style={{ color: "var(--danger)", opacity: 0.8, fontSize: "0.85rem" }}>
+              사유: {roadmapQuery.data.error_message}
+            </div>
+          )}
           <button className="btn-primary" onClick={() => navigate("/")}>
             다시 시도
           </button>

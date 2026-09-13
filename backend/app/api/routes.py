@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.react_loop import run_curation
-from app.db.models import ReactStep, Roadmap
+from app.db.models import ReactStep, Roadmap, RunLog
 from app.db.session import get_db
 from app.schemas.roadmap import (
     CurateRequest,
@@ -35,6 +35,17 @@ async def get_roadmap(roadmap_id: int, db: AsyncSession = Depends(get_db)):
     roadmap = await db.get(Roadmap, roadmap_id)
     if roadmap is None:
         raise HTTPException(status_code=404, detail="roadmap not found")
+
+    error_message = None
+    if roadmap.status in ("failed", "partial"):
+        result = await db.execute(
+            select(RunLog.error_message)
+            .where(RunLog.roadmap_id == roadmap_id)
+            .order_by(RunLog.id.desc())
+            .limit(1)
+        )
+        error_message = result.scalar_one_or_none()
+
     return RoadmapResponse(
         id=roadmap.id,
         topic=roadmap.topic,
@@ -42,6 +53,7 @@ async def get_roadmap(roadmap_id: int, db: AsyncSession = Depends(get_db)):
         result=roadmap.result_json,
         progress=roadmap.progress_json or {},
         created_at=roadmap.created_at,
+        error_message=error_message,
     )
 
 

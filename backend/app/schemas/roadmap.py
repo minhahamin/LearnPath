@@ -90,6 +90,9 @@ class RoadmapResponse(BaseModel):
     result: dict | None
     progress: dict[str, bool]
     created_at: datetime
+    # populated from the latest RunLog row when status is 'failed' or 'partial',
+    # so the frontend can show the real reason instead of a generic message.
+    error_message: str | None = None
 
 
 class ReactStepOut(BaseModel):

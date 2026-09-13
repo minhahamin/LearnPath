@@ -1,9 +1,12 @@
 import asyncio
+import logging
 import time
 
 from google import genai
 from google.genai import errors, types
 from pydantic import ValidationError
+
+logger = logging.getLogger(__name__)
 
 from app.agent.prompts import (
     OBSERVATION_SYSTEM_PROMPT,
@@ -162,6 +165,18 @@ class ReactRunner:
                 if attempt == max_attempts - 1:
                     raise
                 await asyncio.sleep(2**attempt)
+            except errors.ClientError as exc:
+                # 429 (rate limit) is transient and worth retrying with a longer
+                # backoff; other 4xx (bad request, auth) will never succeed on retry.
+                if exc.code != 429 or attempt == max_attempts - 1:
+                    raise
+                await asyncio.sleep(10 * (attempt + 1))
+            except TimeoutError:
+                # asyncio.wait_for timeout - the request may have been transient
+                # (network blip, momentarily overloaded model).
+                if attempt == max_attempts - 1:
+                    raise
+                await asyncio.sleep(2**attempt)
 
         usage = response.usage_metadata
         if usage is not None:
@@ -193,11 +208,15 @@ class ReactRunner:
                 await self._persist_step("thought", "토큰 예산(max_tokens_per_run) 초과로 조기 종료합니다.")
                 return
 
-            decision = await self._call_tool(
-                THOUGHT_SYSTEM_PROMPT,
-                build_thought_user_prompt(self.topic, self._collected_summary(), iteration, max_iterations),
-                DECIDE_TOOL,
-            )
+            try:
+                decision = await self._call_tool(
+                    THOUGHT_SYSTEM_PROMPT,
+                    build_thought_user_prompt(self.topic, self._collected_summary(), iteration, max_iterations),
+                    DECIDE_TOOL,
+                )
+            except Exception as exc:  # Gemini rate limit / timeout / auth error
+                await self._persist_step("thought", f"다음 행동 결정 실패로 수집을 종료합니다: {exc}")
+                return
             await self._persist_step("thought", decision.get("reasoning", ""))
 
             if decision.get("done") or self._enough_collected():
@@ -219,11 +238,15 @@ class ReactRunner:
                 await self._persist_step("observation", "검색 결과 0건.")
                 continue
 
-            evaluation = await self._call_tool(
-                OBSERVATION_SYSTEM_PROMPT,
-                build_observation_user_prompt(query, target_level, [r.model_dump() for r in results]),
-                EVALUATE_TOOL,
-            )
+            try:
+                evaluation = await self._call_tool(
+                    OBSERVATION_SYSTEM_PROMPT,
+                    build_observation_user_prompt(query, target_level, [r.model_dump() for r in results]),
+                    EVALUATE_TOOL,
+                )
+            except Exception as exc:  # Gemini rate limit / timeout / auth error
+                await self._persist_step("observation", f"평가 실패, 이번 검색 결과는 건너뜁니다: {exc}")
+                continue
             evaluations = evaluation.get("evaluations", [])
             snippet_by_url = {r.url: r.snippet for r in results}
             for item in evaluations:
@@ -269,6 +292,12 @@ class ReactRunner:
             except (ValidationError, ValueError) as exc:
                 last_error = str(exc)
                 await self._persist_step("observation", f"출력 계약 검증 실패: {last_error}")
+            except (errors.APIError, RuntimeError, TimeoutError) as exc:
+                # Gemini rate limit / timeout / auth error / no function_call - treat
+                # like a failed attempt so we fall back to a partial result instead
+                # of aborting the whole run.
+                last_error = str(exc)
+                await self._persist_step("observation", f"로드맵 생성 요청 실패: {last_error}")
 
         return None, self.settings.max_retry_count, last_error
 
@@ -318,7 +347,8 @@ async def run_curation(roadmap_id: int, topic: str) -> None:
                 result = _build_partial_result(topic, runner.collected)
                 status = "partial"
                 error_message = gen_error
-    except Exception as exc:  # unexpected failure (API auth, etc.)
+    except Exception as exc:  # unexpected failure (API auth, DB, etc.)
+        logger.exception("run_curation failed for roadmap_id=%s topic=%r", roadmap_id, topic)
         error_message = str(exc)
         status = "failed"
 

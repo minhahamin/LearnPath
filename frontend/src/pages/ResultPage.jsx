@@ -66,6 +66,11 @@ export default function ResultPage() {
           <span className={`status-pill ${roadmap.status}`}>{STATUS_LABELS[roadmap.status]}</span>
           {result?.total_estimated_hours != null && <span>예상 학습 시간: {result.total_estimated_hours}시간</span>}
         </div>
+        {roadmap.status === "partial" && roadmap.error_message && (
+          <p style={{ color: "var(--danger)", fontSize: "0.85rem" }}>
+            일부 자료로만 구성됐습니다. 사유: {roadmap.error_message}
+          </p>
+        )}
       </div>
 
       {totalCount > 0 && (
