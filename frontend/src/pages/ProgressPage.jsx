@@ -70,7 +70,7 @@ export default function ProgressPage() {
               사유: {roadmapQuery.data.error_message}
             </div>
           )}
-          <button className="btn-primary" onClick={() => navigate("/")}>
+          <button className="btn-primary" style={{ marginBottom: "24px" }} onClick={() => navigate("/")}>
             다시 시도
           </button>
         </>
