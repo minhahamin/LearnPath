@@ -6,8 +6,6 @@ from google import genai
 from google.genai import errors, types
 from pydantic import ValidationError
 
-logger = logging.getLogger(__name__)
-
 from app.agent.prompts import (
     OBSERVATION_SYSTEM_PROMPT,
     ROADMAP_SYSTEM_PROMPT,
@@ -23,8 +21,23 @@ from app.db.models import ReactStep, Roadmap, RunLog
 from app.db.session import AsyncSessionLocal
 from app.schemas.roadmap import RoadmapContract
 
+logger = logging.getLogger(__name__)
+
 LEVELS = ("beginner", "intermediate", "advanced")
 MIN_RESOURCES_PER_LEVEL = 2
+
+QUOTA_EXCEEDED_MESSAGE = (
+    "Gemini API 무료 티어의 하루 사용 한도를 모두 소진했습니다. "
+    "쿼터는 매일 태평양 시간(PT) 자정에 초기화됩니다(한국 시간 기준 오후 4~5시경, "
+    "서머타임 여부에 따라 달라질 수 있음). 그 이후 다시 시도해 주세요."
+)
+
+
+def _describe_error(exc: Exception) -> str:
+    if isinstance(exc, errors.ClientError) and getattr(exc, "status", None) == "RESOURCE_EXHAUSTED":
+        return QUOTA_EXCEEDED_MESSAGE
+    return str(exc)
+
 
 DECIDE_TOOL = {
     "name": "decide_next_search",
@@ -115,6 +128,7 @@ class ReactRunner:
         self._step_order = 0
         self.input_tokens = 0
         self.output_tokens = 0
+        self.last_error: str | None = None
 
     @property
     def total_tokens(self) -> int:
@@ -166,9 +180,11 @@ class ReactRunner:
                     raise
                 await asyncio.sleep(2**attempt)
             except errors.ClientError as exc:
-                # 429 (rate limit) is transient and worth retrying with a longer
-                # backoff; other 4xx (bad request, auth) will never succeed on retry.
-                if exc.code != 429 or attempt == max_attempts - 1:
+                # a plain 429 (short-lived rate limit) is worth retrying with a
+                # longer backoff; RESOURCE_EXHAUSTED means the daily quota is gone
+                # and won't recover within this run, so fail fast instead of
+                # burning the remaining retry attempts.
+                if exc.code != 429 or exc.status == "RESOURCE_EXHAUSTED" or attempt == max_attempts - 1:
                     raise
                 await asyncio.sleep(10 * (attempt + 1))
             except TimeoutError:
@@ -215,7 +231,8 @@ class ReactRunner:
                     DECIDE_TOOL,
                 )
             except Exception as exc:  # Gemini rate limit / timeout / auth error
-                await self._persist_step("thought", f"다음 행동 결정 실패로 수집을 종료합니다: {exc}")
+                self.last_error = _describe_error(exc)
+                await self._persist_step("thought", f"다음 행동 결정 실패로 수집을 종료합니다: {self.last_error}")
                 return
             await self._persist_step("thought", decision.get("reasoning", ""))
 
@@ -245,7 +262,8 @@ class ReactRunner:
                     EVALUATE_TOOL,
                 )
             except Exception as exc:  # Gemini rate limit / timeout / auth error
-                await self._persist_step("observation", f"평가 실패, 이번 검색 결과는 건너뜁니다: {exc}")
+                self.last_error = _describe_error(exc)
+                await self._persist_step("observation", f"평가 실패, 이번 검색 결과는 건너뜁니다: {self.last_error}")
                 continue
             evaluations = evaluation.get("evaluations", [])
             snippet_by_url = {r.url: r.snippet for r in results}
@@ -296,7 +314,7 @@ class ReactRunner:
                 # Gemini rate limit / timeout / auth error / no function_call - treat
                 # like a failed attempt so we fall back to a partial result instead
                 # of aborting the whole run.
-                last_error = str(exc)
+                last_error = _describe_error(exc)
                 await self._persist_step("observation", f"로드맵 생성 요청 실패: {last_error}")
 
         return None, self.settings.max_retry_count, last_error
@@ -338,7 +356,7 @@ async def run_curation(roadmap_id: int, topic: str) -> None:
         await runner.run_react_phase()
         has_any = any(runner.collected[lvl] for lvl in LEVELS)
         if not has_any:
-            error_message = "검색 결과를 전혀 확보하지 못했습니다."
+            error_message = runner.last_error or "검색 결과를 전혀 확보하지 못했습니다."
         else:
             result, retry_count, gen_error = await runner.generate_roadmap()
             if result is not None:
@@ -349,7 +367,7 @@ async def run_curation(roadmap_id: int, topic: str) -> None:
                 error_message = gen_error
     except Exception as exc:  # unexpected failure (API auth, DB, etc.)
         logger.exception("run_curation failed for roadmap_id=%s topic=%r", roadmap_id, topic)
-        error_message = str(exc)
+        error_message = _describe_error(exc)
         status = "failed"
 
     duration_ms = int((time.monotonic() - start) * 1000)
